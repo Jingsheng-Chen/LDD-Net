@@ -1,0 +1,63 @@
+nc: 6  # number of classes
+depth_multiple: 0.33  # model depth multiple
+width_multiple: 0.625 # layer channel multiple
+anchors: 1  # number of anchors
+loss: ComputeXLoss
+
+backbone:   #LFEN
+  # [from, number, module, args]
+  [[-1, 1, Conv, [64, 3, 2]],  # 0-P1/2
+   [-1, 1, Focus, [128]],  # 1-P2/4
+   [-1, 1, CSPV2, [128]],
+   [-1, 1, Focus, [256]],  # 3-P3/8
+   [-1, 1, CSPV2, [256]],
+   [-1, 1, Focus, [512]],  # 5-P4/16
+   [-1, 1, CSPV2, [512]],
+   [-1, 1, Focus, [1024]],  # 7-P5/32
+   [-1, 1, CSPV2, [512, 0.25]],
+   [-1, 1, SPPF, [512, 5]],  # 9
+  ]
+
+head: #MAN
+  [
+   [-1, 1, nn.Upsample, [None, 2, 'nearest']],#11
+   [-1, 1, EAM, [512]],
+   [[-1, 6], 1, Concat, [1]],  # cat backbone P4 12
+   [-1, 3, CSP_S, [512, True]],  # 13
+
+   [-1, 1, Conv, [256, 1, 1]], #14
+   [-1, 1, nn.Upsample, [None, 2, 'nearest']],
+   [-1, 1, EAM, [256]],
+   [[-1, 4], 1, Concat, [1]],  # cat backbone P3
+   [-1, 3, CSP_S, [256, True]],  # 17 (P3/8-small) 18
+
+   [ -1, 1, Conv, [ 128, 1, 1 ] ], # 17
+   [ -1, 1, nn.Upsample, [ None, 2, 'nearest' ] ], #160 160 128 18
+   [-1, 1, EAM, [128]],
+   [[ -1, 2 ], 1, Concat, [ 1 ] ],  # cat backbone P2 19
+   [-1, 3, CSP_S, [ 128, False ] ],  #  (P2/4 ssmall) 20
+
+   [-1, 1, Focus, [128]], # 40 40 256 21
+   [[-1, 19], 1, Concat, [1]],  # cat head P4 22
+   [-1, 3, CSP_S, [256, False]],  # 20 (P3/8-small) 23
+
+   [-1, 1, Focus, [256]], # 20 20 512 5 24
+   [[-1, 14], 1, Concat, [1]],  # cat head P5 25
+   [-1, 3, CSP_S, [512, False]],  # 23 (P5/16-meddle) 26
+
+# LD-Head
+   [23, 1, Conv, [128, 1, 1]],  # 24 lateral0 (P3/8-small) 27
+   [26, 1, Conv, [256, 1, 1]],  # 25 lateral1 (P4/16-medium) 28
+   [29, 1, Conv, [256, 1, 1]],  # 26 lateral2 (P5/32-large) 29
+
+   [30, 2, DWConv, [128, 3, 1]],  # 27 cls0 (P3/8-small)
+   [30, 2, DWConv, [128, 3, 1]],  # 28 reg0 (P3/8-small)
+
+   [31, 2, DWConv, [256, 3, 1]],  # 29 cls1 (P4/16-medium)
+   [31, 2, DWConv, [256, 3, 1]],  # 30 reg1 (P4/16-medium)
+
+   [32, 2, DWConv, [256, 3, 1]],  # 31 cls2 (P5/32-large)
+   [32, 2, DWConv, [256, 3, 1]],  # 32 reg2 (P5/32-large)
+
+   [[33, 34, 35, 36 ,37, 38], 1, DetectX, [nc, anchors]],  # Detect(P3, P4, P5)
+  ]
